@@ -99,10 +99,6 @@ steps:
   - name: Run config tests
     commands:
       - bats ./test/config-tests.bats
-  - name: Run Letsencrypt test against Staging
-    commands:
-      - cp /root/le-env.sh /tmp/hestia-le-env.sh
-      - bats ./test/letsencrypt.bats
 
 trigger:
   event: [pull_request, push]
@@ -130,7 +126,7 @@ steps:
       - npm ci --ignore-scripts
       - npm run build
   - name: Build
-    image: debian:bullseye
+    image: debian:bookworm
     commands:
       - ln -snf /etc/localtime && echo CET > /etc/timezone
       - ./src/hst_autocompile.sh --dontinstalldeps --hestia --debug --cross --noinstall --keepbuild '~localsrc'

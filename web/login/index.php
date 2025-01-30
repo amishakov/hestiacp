@@ -120,6 +120,12 @@ function authenticate_user($user, $password, $twofa = "") {
 				$ip = $_SERVER["HTTP_CF_CONNECTING_IP"];
 			}
 		}
+
+		// Handling IPv4-mapped IPv6 address
+		if (strpos($ip, ":") === 0 && strpos($ip, ".") > 0) {
+			$ip = substr($ip, strrpos($ip, ":") + 1); // Strip IPv4 Compatibility notation
+		}
+
 		$v_ip = quoteshellarg($ip);
 		$v_user_agent = quoteshellarg($user_agent);
 
@@ -454,3 +460,4 @@ if (!empty($_SESSION["login"]["password"])) {
 		($_SESSION["LOGIN_STYLE"] != "old" ? "" : "_a") .
 		".php";
 }
+require_once "../templates/includes/login-footer.php";

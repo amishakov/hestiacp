@@ -62,9 +62,6 @@ rebuild_user_conf() {
 	if [ -z "${RATE_LIMIT+x}" ]; then
 		sed -i "/MAIL_ACCOUNTS/a RATE_LIMIT='200'" $USER_DATA/user.conf
 	fi
-	if [ -z "${SHELL_JAIL_ENABLED+x}" ]; then
-		sed -i "/SHELL/a SHELL_JAIL_ENABLED='no'" $USER_DATA/user.conf
-	fi
 	# Run template trigger
 	if [ -x "$HESTIA/data/packages/$PACKAGE.sh" ]; then
 		$HESTIA/data/packages/$PACKAGE.sh "$user" "$CONTACT" "$NAME"
@@ -111,7 +108,8 @@ rebuild_user_conf() {
 		$HOMEDIR/$user/.composer \
 		$HOMEDIR/$user/.vscode-server \
 		$HOMEDIR/$user/.ssh \
-		$HOMEDIR/$user/.npm
+		$HOMEDIR/$user/.npm \
+		$HOMEDIR/$user/.wp-cli
 	chmod a+x $HOMEDIR/$user
 	chmod a+x $HOMEDIR/$user/conf
 	chown --no-dereference $user:$user \
@@ -122,12 +120,11 @@ rebuild_user_conf() {
 		$HOMEDIR/$user/.composer \
 		$HOMEDIR/$user/.vscode-server \
 		$HOMEDIR/$user/.ssh \
-		$HOMEDIR/$user/.npm
+		$HOMEDIR/$user/.npm \
+		$HOMEDIR/$user/.wp-cli
 	chown root:root $HOMEDIR/$user/conf
 
 	$BIN/v-add-user-sftp-jail "$user"
-
-	$BIN/v-add-user-ssh-jail "$user"
 
 	# Update disk pipe
 	sed -i "/ $user$/d" $HESTIA/data/queue/disk.pipe
@@ -410,7 +407,7 @@ rebuild_web_domain_conf() {
 			$BIN/v-delete-web-domain-ftp "$user" "$domain" "$ftp_user"
 			# Generate temporary password to add user but update afterwards
 			temp_password=$(generate_password)
-			$BIN/v-add-web-domain-ftp "$user" "$domain" "${ftp_user#*_}" "$temp_password" "$ftp_path"
+			$BIN/v-add-web-domain-ftp "$user" "$domain" "${ftp_user##*_}" "$temp_password" "$ftp_path"
 			# Updating ftp user password
 			chmod u+w /etc/shadow
 			sed -i "s|^$ftp_user:[^:]*:|$ftp_user:$ftp_md5:|" /etc/shadow
@@ -469,8 +466,8 @@ rebuild_web_domain_conf() {
 	if [ "$DOMAINDIR_WRITABLE" = 'yes' ]; then DOMAINDIR_MODE=751; fi
 
 	# Set folder permissions
-	no_symlink_chmod $DOMAINDIR_MODE $HOMEDIR/$user/web/$domain
-	no_symlink_chmod 551 $HOMEDIR/$user/web/$domain/stats \
+	no_symlink_chmod 751 $HOMEDIR/$user/web/$domain \
+		$HOMEDIR/$user/web/$domain/stats \
 		$HOMEDIR/$user/web/$domain/logs
 	no_symlink_chmod 751 $HOMEDIR/$user/web/$domain/private \
 		$HOMEDIR/$user/web/$domain/cgi-bin \
@@ -633,7 +630,7 @@ rebuild_mail_domain_conf() {
 		touch $HOMEDIR/$user/conf/mail/$domain/limits
 
 		# Setting outgoing ip address
-		if [ -n "$local_ip" ]; then
+		if [ -n "$local_ip" ] && [ "$U_SMTP_RELAY" != 'true' ]; then
 			echo "$local_ip" > $HOMEDIR/$user/conf/mail/$domain/ip
 		fi
 

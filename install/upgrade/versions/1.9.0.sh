@@ -27,17 +27,6 @@ upgrade_config_set_value 'UPGRADE_UPDATE_FILEMANAGER_CONFIG' 'false'
 $BIN/v-delete-sys-sftp-jail
 $BIN/v-add-sys-sftp-jail
 
-codename="$(lsb_release -s -c)"
-apt=/etc/apt/sources.list.d
-
-# Installing Node.js 20.x repo
-if [ ! -f $apt/nodesource.list ] && [ ! -z $(which "node") ]; then
-	echo "[ * ] Adding Node.js 20.x repo"
-	echo "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x $codename main" > $apt/nodesource.list
-	echo "deb-src [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x $codename main" >> $apt/nodesource.list
-	curl -s https://deb.nodesource.com/gpgkey/nodesource.gpg.key | gpg --dearmor | tee /usr/share/keyrings/nodesource.gpg > /dev/null 2>&1
-fi
-
 # Check if hestiaweb exists
 if [ -z "$(grep ^hestiaweb: /etc/passwd)" ]; then
 	# Generate a random password
@@ -49,7 +38,7 @@ if [ -z "$(grep ^hestiaweb: /etc/passwd)" ]; then
 	cp $HESTIA_COMMON_DIR/sudo/hestiaweb /etc/sudoers.d/
 	# Keep enabled for now
 	# Remove sudo permissions admin user
-	#rm /etc/sudoers.d/admin/
+	# rm /etc/sudoers.d/admin/
 fi
 
 # Check if cronjobs have been migrated
@@ -74,11 +63,46 @@ fi
 chown hestiaweb:hestiaweb /usr/local/hestia/data/sessions
 
 packages=$(ls --sort=time $HESTIA/data/packages | grep .pkg)
+# Update Hestia Packages
 for package in $packages; do
-	if [ -z "$(grep -e 'SHELL_JAIL_ENABLED' $HESTIA/data/packages/$package)" ]; then
-		echo "SHELL_JAIL_ENABLED='no'" >> $HESTIA/data/packages/$package
+	if [ -z "$(grep -e 'BACKUPS_INCREMENTAL' $HESTIA/data/packages/$package)" ]; then
+		echo "BACKUPS_INCREMENTAL='no'" >> $HESTIA/data/packages/$package
 	fi
+
+	# Add additional key-value pairs if they don't exist
+	for key in DISK_QUOTA CPU_QUOTA CPU_QUOTA_PERIOD MEMORY_LIMIT SWAP_LIMIT; do
+		if [ -z "$(grep -e "$key" $HESTIA/data/packages/$package)" ]; then
+			echo "$key='unlimited'" >> $HESTIA/data/packages/$package
+		fi
+	done
 done
 
-$BIN/v-add-user-notification 'admin' 'Hestia securirty has been upgraded' 'Here should come a nice message about the upgrade and how to change the user name of the admin user!'
-add_upgrade_message 'Here should come a nice message about the upgrade and how to change the user name of the admin user!'
+# Add xferlog to vsftpd logrotate
+if [ -s /etc/logrotate.d/vsftpd ] && ! grep -Fq "/var/log/xferlog" /etc/logrotate.d/vsftpd; then
+	sed -i 's|/var/log/vsftpd.log|/var/log/vsftpd.log /var/log/xferlog|g' /etc/logrotate.d/vsftpd
+fi
+
+# Use only TLS 1.2 cipher suites for vsftpd
+if [ -s /etc/vsftpd.conf ]; then
+	sed -i "s/ssl_ciphers.*/ssl_ciphers=ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:DHE-RSA-CHACHA20-POLY1305/g" /etc/vsftpd.conf
+fi
+
+# Increase max connections and limit number of connections per host for Exim
+if [ -s /etc/exim4/exim4.conf.template ] && ! grep -Fq "smtp_accept_max" /etc/exim4/exim4.conf.template; then
+	sed -i '/disable_ipv6 = true/a\smtp_accept_max = 100\nsmtp_accept_max_per_host = 20' /etc/exim4/exim4.conf.template
+fi
+
+# Update phymyadmin.inc for nginx
+if [ -s /etc/nginx/conf.d/phpmyadmin.inc ]; then
+	cp -f $HESTIA_INSTALL_DIR/nginx/phpmyadmin.inc /etc/nginx/conf.d/phpmyadmin.inc
+fi
+
+# Fix MySQL lc-messages-dir path for mariadb
+if [ -x /usr/bin/mariadb ]; then
+	sed -i 's|/usr/share/mysql|/usr/share/mariadb|g' /etc/mysql/my.cnf
+fi
+
+$BIN/v-add-user-notification 'admin' 'Hestia security has been upgraded' ' A new user "hestiaweb" has been created and is used for login. Make sure other Hestia packages are updated as well otherwise the system may not work as expected.'
+add_upgrade_message 'Security has been upgraded, A new user "hestiaweb" has been created and is used for login. Make sure other Hestia packages are updated as well otherwise the system may not work as expected.'
+# Ensures proper permissions for Hestia service interactions.
+/usr/sbin/adduser hestiamail hestia-users

@@ -3,8 +3,9 @@
 namespace Hestia\WebApp\Installers\Opencart;
 
 use Hestia\WebApp\Installers\BaseSetup as BaseSetup;
+use function Hestiacp\quoteshellarg\quoteshellarg;
 
-class OpencartSetup extends BaseSetup {
+class OpenCartSetup extends BaseSetup {
 	protected $appInfo = [
 		"name" => "OpenCart",
 		"group" => "ecommerce",
@@ -62,11 +63,8 @@ class OpencartSetup extends BaseSetup {
 			$this->getDocRoot(".htaccess"),
 		]);
 		#Check if SSL is enabled
-		$this->appcontext->run(
-			"v-list-web-domain",
-			[$this->appcontext->user(), $this->domain, "json"],
-			$status,
-		);
+		$this->appcontext->runUser("v-list-web-domain", [$this->domain, "json"], $status);
+
 		if ($status->code !== 0) {
 			throw new \Exception("Cannot list domain");
 		}
@@ -80,15 +78,18 @@ class OpencartSetup extends BaseSetup {
 			"v-run-cli-cmd",
 			[
 				"/usr/bin/php" . $options["php_version"],
-				$this->getDocRoot("/install/cli_install.php"),
+				quoteshellarg($this->getDocRoot("/install/cli_install.php")),
 				"install",
-				"--db_username " . $this->appcontext->user() . "_" . $options["database_user"],
-				"--db_password " . $options["database_password"],
-				"--db_database " . $this->appcontext->user() . "_" . $options["database_name"],
-				"--username " . $options["opencart_account_username"],
-				"--password " . $options["opencart_account_password"],
-				"--email " . $options["opencart_account_email"],
-				"--http_server " . $protocol . $this->domain . "/",
+				"--db_hostname " . quoteshellarg($options["database_host"]),
+				"--db_username " .
+				quoteshellarg($this->appcontext->user() . "_" . $options["database_user"]),
+				"--db_password " . quoteshellarg($options["database_password"]),
+				"--db_database " .
+				quoteshellarg($this->appcontext->user() . "_" . $options["database_name"]),
+				"--username " . quoteshellarg($options["opencart_account_username"]),
+				"--password " . quoteshellarg($options["opencart_account_password"]),
+				"--email " . quoteshellarg($options["opencart_account_email"]),
+				"--http_server " . quoteshellarg($protocol . $this->domain . "/"),
 			],
 			$status,
 		);

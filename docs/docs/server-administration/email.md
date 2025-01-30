@@ -44,7 +44,7 @@ If not, you have 2 options:
 2. Setup a mail relay under the mail domain settings or set it up generally for the server in system settings. For this you need to use an SMTP relay service like:
    - [Amazon SES](https://aws.amazon.com/ses/)
    - [SMTP2GO](https://www.smtp2go.com)
-   - [Sendinblue](https://www.sendinblue.com)
+   - [Brevo](https://www.brevo.com/)
 
 ## What is an SMTP relay service and how to set it up
 
@@ -143,14 +143,34 @@ Open port 4190 in the firewall. [Read the firewall documentation](./firewall).
 
 ## How can I enable ManageSieve for Snappymail?
 
-Edit `/etc/snappymail/data/_data_/_default_/domains/default.ini` and modify the following settings:
+Edit `/etc/snappymail/data/_data_/_default_/domains/default.json` and modify the following settings:
 
-```bash
-sieve_use = On
-sieve_allow_raw = Off
-sieve_host = "localhost"
-sieve_port = 4190
-sieve_secure = "None"
+```json
+"Sieve": {
+	"host": "localhost",
+	"port": 4190,
+	"type": 0,
+	"timeout": 10,
+	"shortLogin": false,
+	"lowerLogin": true,
+	"sasl": [
+		"SCRAM-SHA3-512",
+		"SCRAM-SHA-512",
+		"SCRAM-SHA-256",
+		"SCRAM-SHA-1",
+		"PLAIN",
+		"LOGIN"
+	],
+	"ssl": {
+		"verify_peer": false,
+		"verify_peer_name": false,
+		"allow_self_signed": false,
+		"SNI_enabled": true,
+		"disable_compression": true,
+		"security_level": 1
+	},
+	"enabled": false # Change this to true
+},
 ```
 
 ## Oracle Cloud + SMTP relay
@@ -176,3 +196,55 @@ hide client_send = ^SMTP_RELAY_USER^SMTP_RELAY_PASS
 ```
 
 [See forum topic for more info](https://forum.hestiacp.com/t/oracle-cloud-email-as-relay-doesnt-works/11304/19?)
+
+## Setting up mail hooks
+
+Some SMTP relay services might require you to set the domain within the SMTP relay account. To automate this hooks have been added to v-add-mail-domain and v-delete-mail domains.
+
+Create: $HESTIA/data/extensions/add-mail-domain.sh and $HESTIA/data/extensions/v-delete-mail-domain.sh
+
+### Proxmox mail server
+
+See: [Github](https://github.com/hestiacp/hestiacp/pull/4365)
+
+```bash
+# v-add-mail-domain
+SMTP_RELAY_PMG_USER="user"
+SMTP_RELAY_PMG_PASS="password"
+SMTP_RELAY_PMG_HOST="host"
+SMTP_RELAY_PMG_PORT="port"
+
+pmg_auth=$(curl -s --request POST -d "username=$SMTP_RELAY_PMG_USER&password=$SMTP_RELAY_PMG_PASS" \
+	--url https://$SMTP_RELAY_PMG_HOST:$SMTP_RELAY_PMG_PORT/api2/json/access/ticket)
+pmg_ticket=$(echo $pmg_auth | jq -r '.data.ticket')
+pmg_csrf=$(echo $pmg_auth | jq -r '.data.CSRFPreventionToken')
+if [ -n "$pmg_ticket" ]; then
+	pmg_config_domain=$(curl -s --request POST -d "domain=$domain" \
+		-H "CSRFPreventionToken: $pmg_csrf" -H "Cookie: PMGAuthCookie=$pmg_ticket" \
+		https://$SMTP_RELAY_PMG_HOST:$SMTP_RELAY_PMG_PORT/api2/json/config/domains)
+	pmg_config_transport=$(curl -s --request POST -d "domain=$domain&host=$SMTP_RELAY_PMG_LOCAL_IP" \
+		-H "CSRFPreventionToken: $pmg_csrf" -H "Cookie: PMGAuthCookie=$pmg_ticket" \
+		https://$SMTP_RELAY_PMG_HOST:$SMTP_RELAY_PMG_PORT/api2/json/config/transport)
+fi
+
+# v-delete-mail-domain.sh
+SMTP_RELAY_PMG_USER="user"
+SMTP_RELAY_PMG_PASS="password"
+SMTP_RELAY_PMG_HOST="host"
+SMTP_RELAY_PMG_PORT="port"
+
+if [ -n "$SMTP_RELAY_PMG" ]; then
+	pmg_auth=$(curl -s --request POST -d "username=$SMTP_RELAY_PMG_USER&password=$SMTP_RELAY_PMG_PASS" \
+		--url https://$SMTP_RELAY_PMG_HOST:$SMTP_RELAY_PMG_PORT/api2/json/access/ticket)
+	pmg_ticket=$(echo $pmg_auth | jq -r '.data.ticket')
+	pmg_csrf=$(echo $pmg_auth | jq -r '.data.CSRFPreventionToken')
+	if [ -n "$pmg_ticket" ]; then
+		pmg_config_domain=$(curl -s --request DELETE \
+			-H "CSRFPreventionToken: $pmg_csrf" -H "Cookie: PMGAuthCookie=$pmg_ticket" \
+			https://$SMTP_RELAY_PMG_HOST:$SMTP_RELAY_PMG_PORT/api2/json/config/domains/$domain)
+		pmg_config_transport=$(curl -s --request DELETE \
+			-H "CSRFPreventionToken: $pmg_csrf" -H "Cookie: PMGAuthCookie=$pmg_ticket" \
+			https://$SMTP_RELAY_PMG_HOST:$SMTP_RELAY_PMG_PORT/api2/json/config/transport/$domain)
+	fi
+fi
+```

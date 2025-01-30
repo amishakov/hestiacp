@@ -3,8 +3,9 @@
 namespace Hestia\WebApp\Installers\Prestashop;
 
 use Hestia\WebApp\Installers\BaseSetup as BaseSetup;
+use function Hestiacp\quoteshellarg\quoteshellarg;
 
-class PrestashopSetup extends BaseSetup {
+class PrestaShopSetup extends BaseSetup {
 	protected $appInfo = [
 		"name" => "PrestaShop",
 		"group" => "ecommerce",
@@ -48,11 +49,8 @@ class PrestashopSetup extends BaseSetup {
 			$this->getDocRoot(),
 		);
 		//check if ssl is enabled
-		$this->appcontext->run(
-			"v-list-web-domain",
-			[$this->appcontext->user(), $this->domain, "json"],
-			$status,
-		);
+		$this->appcontext->runUser("v-list-web-domain", [$this->domain, "json"], $status);
+
 		if ($status->code !== 0) {
 			throw new \Exception("Cannot list domain");
 		}
@@ -71,16 +69,19 @@ class PrestashopSetup extends BaseSetup {
 			"v-run-cli-cmd",
 			[
 				"/usr/bin/php" . $options["php_version"],
-				$this->getDocRoot("/install/index_cli.php"),
-				"--db_user=" . $this->appcontext->user() . "_" . $options["database_user"],
-				"--db_password=" . $options["database_password"],
-				"--db_name=" . $this->appcontext->user() . "_" . $options["database_name"],
-				"--firstname=" . $options["prestashop_account_first_name"],
-				"--lastname=" . $options["prestashop_account_last_name"],
-				"--password=" . $options["prestashop_account_password"],
-				"--email=" . $options["prestashop_account_email"],
-				"--domain=" . $this->domain,
-				"--ssl=" . $ssl_enabled,
+				quoteshellarg($this->getDocRoot("/install/index_cli.php")),
+				"--db_server=" . quoteshellarg($options["database_host"]),
+				"--db_user=" .
+				quoteshellarg($this->appcontext->user() . "_" . $options["database_user"]),
+				"--db_password=" . quoteshellarg($options["database_password"]),
+				"--db_name=" .
+				quoteshellarg($this->appcontext->user() . "_" . $options["database_name"]),
+				"--firstname=" . quoteshellarg($options["prestashop_account_first_name"]),
+				"--lastname=" . quoteshellarg($options["prestashop_account_last_name"]),
+				"--password=" . quoteshellarg($options["prestashop_account_password"]),
+				"--email=" . quoteshellarg($options["prestashop_account_email"]),
+				"--domain=" . quoteshellarg($this->domain),
+				"--ssl=" . (int) $ssl_enabled,
 			],
 			$status,
 		);
